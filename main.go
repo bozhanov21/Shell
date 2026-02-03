@@ -2,9 +2,7 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 )
@@ -20,18 +18,22 @@ func main() {
 		}
 
 		trimmed := strings.TrimSpace(raw_string)
-		command, args, err := parse_command(trimmed)
+		command, args := parse_command(trimmed)
 
-		if err != nil {
-			log.Fatalln(err)
-		}
+		switch command {
 
-		comand_func, exists := known_commands[command]
+		case "":
+			fmt.Println()
 
-		if exists {
-			comand_func(args...)
-		} else {
-			fmt.Println(command + ": command not found")
+		default:
+			comand_func, exists := known_commands[command]
+
+			if exists {
+				comand_func(args...)
+			} else {
+				fmt.Println(command + ": command not found")
+			}
+
 		}
 
 	}
@@ -44,17 +46,12 @@ var known_commands = commands{
 	"exit": func(args ...string) { os.Exit(0) },
 }
 
-func parse_command(input string) (string, []string, error) {
+func parse_command(input string) (string, []string) {
 	parts := strings.Split(input, " ")
 
-	if parts[0] == "" {
-		return "", nil, errors.New("Failed parsing the command")
-	}
-
 	if len(parts) > 1 {
-		return parts[0], parts[1:], nil
+		return parts[0], parts[1:]
 	}
 
-	return parts[0], nil, nil
-
+	return parts[0], nil
 }
