@@ -37,7 +37,6 @@ func main() {
 
 		default:
 			handle_command(command, args)
-
 		}
 
 	}
@@ -78,14 +77,16 @@ func handle_command(command string, args []string) {
 		return
 	}
 
-	path, err := resolve_command(command)
+	_, err := resolve_command(command)
 	if err != nil {
 		printResolveError(command, err)
 		return
 	}
 
-	//execve goes here
-	fmt.Println(command + " resolved to " + path)
+	cmd := exec.Command(command, args...)
+	std_out, _ := cmd.CombinedOutput()
+
+	fmt.Print(string(std_out))
 }
 
 func handle_type_case(cmd string) {
@@ -125,3 +126,4 @@ func parse_command(input string) (string, []string) {
 
 	return parts[0], nil
 }
+
