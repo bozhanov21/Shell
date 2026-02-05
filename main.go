@@ -61,7 +61,15 @@ var known_commands = commands{
 
 	"cd": func(args ...string) {
 		path := args[0]
-		path = strings.ReplaceAll(path, "~", os.Getenv("HOME"))
+
+		if strings.HasPrefix(path, "~") {
+			dic, err := os.UserHomeDir()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "cd:", args[0]+":", "Error finding HOME variable")
+				return
+			}
+			path = dic + path[1:]
+		}
 
 		err := os.Chdir(path)
 		if err != nil {
