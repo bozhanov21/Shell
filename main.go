@@ -60,7 +60,10 @@ var known_commands = commands{
 	},
 
 	"cd": func(args ...string) {
-		err := os.Chdir(args[0])
+		path := args[0]
+		path = strings.ReplaceAll(path, "~", os.Getenv("HOME"))
+
+		err := os.Chdir(path)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "cd:", args[0]+":", "No such file or directory")
 		}
@@ -142,4 +145,3 @@ func parse_command(input string) (string, []string) {
 
 	return parts[0], nil
 }
-
