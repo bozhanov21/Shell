@@ -65,7 +65,7 @@ func init() {
 		"cd": func(args ...string) {
 			var path string
 
-			if args == nil {
+			if len(args) == 0 {
 				path = "~"
 			} else {
 				path = args[0]
@@ -85,7 +85,8 @@ func init() {
 				fmt.Fprintln(os.Stderr, "cd:", args[0]+":", "No such file or directory")
 				return
 			}
-			handle_command("ls", nil)
+			cmd := exec.Command("ls")
+			handle_output(cmd)
 		},
 	}
 }
@@ -123,9 +124,26 @@ func handle_command(command string, args []string) {
 
 	//use CommandContext?
 	cmd := exec.Command(command, args...)
-	std_out, _ := cmd.CombinedOutput()
+	handle_output(cmd)
+}
 
-	fmt.Print(string(std_out))
+var lastExitCode int
+
+func handle_output(cmd *exec.Cmd) {
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err := cmd.Run()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			lastExitCode = exitErr.ExitCode()
+		} else {
+			lastExitCode = 1
+		}
+	} else {
+		lastExitCode = 0
+	}
 }
 
 func handle_type_case(cmd string) {
@@ -165,3 +183,4 @@ func parse_command(input string) (string, []string) {
 
 	return parts[0], nil
 }
+
