@@ -86,7 +86,7 @@ func init() {
 				fmt.Fprintln(os.Stderr, "cd:", args[0]+":", "No such file or directory")
 				return
 			}
-			handle_output("ls")
+			// handle_output("ls")
 		},
 	}
 }
@@ -209,29 +209,57 @@ func parse_command(input string) (string, []string) {
 	var current strings.Builder
 	inOuterQuote := false
 	inQuote := false
+	preserve_next := false
 
 	for _, r := range arguments {
+
 		switch r {
 
+		case '\\':
+			if preserve_next {
+				current.WriteRune(r)
+				preserve_next = false
+			} else {
+				preserve_next = true
+			}
+
 		case '"':
-			inOuterQuote = !inOuterQuote
+			if preserve_next {
+				current.WriteRune(r)
+				preserve_next = false
+			} else {
+				inOuterQuote = !inOuterQuote
+			}
 
 		case '\'':
-			if !inOuterQuote {
-				inQuote = !inQuote
-			} else {
+			if preserve_next {
 				current.WriteRune(r)
+				preserve_next = false
+			} else {
+				if !inOuterQuote {
+					inQuote = !inQuote
+				} else {
+					current.WriteRune(r)
+				}
 			}
 
 		case ' ':
-			if inQuote || inOuterQuote {
+			if preserve_next {
 				current.WriteRune(r)
-			} else if current.Len() > 0 {
-				args = append(args, current.String())
-				current.Reset()
+				preserve_next = false
+			} else {
+				if inQuote || inOuterQuote {
+					current.WriteRune(r)
+				} else if current.Len() > 0 {
+					args = append(args, current.String())
+					current.Reset()
+				}
 			}
 
 		default:
+			if preserve_next {
+				preserve_next = false
+			}
 			current.WriteRune(r)
 		}
 
