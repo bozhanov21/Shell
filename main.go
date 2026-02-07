@@ -22,8 +22,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		trimmed := strings.TrimSpace(raw_string)
-		command, args := parse_command(trimmed)
+		command, args := parse_command(raw_string)
 
 		switch command {
 
@@ -194,11 +193,44 @@ func get_method_bound_to_command(command string) (func(args ...string), bool) {
 }
 
 func parse_command(input string) (string, []string) {
-	parts := strings.Split(input, " ")
+	trimmed := strings.TrimSpace(input)
 
-	if len(parts) > 1 {
-		return parts[0], parts[1:]
+	if trimmed == "" {
+		return "", nil
 	}
 
-	return parts[0], nil
+	command, arguments, exists := strings.Cut(trimmed, " ")
+
+	if !exists {
+		return command, nil
+	}
+
+	var args []string
+	var current strings.Builder
+	inQuote := false
+
+	for _, r := range arguments {
+		switch r {
+		case '\'':
+			inQuote = !inQuote
+
+		case ' ':
+			if inQuote {
+				current.WriteRune(r)
+			} else if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+
+		default:
+			current.WriteRune(r)
+		}
+
+	}
+	// end of input
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+
+	return command, args
 }
