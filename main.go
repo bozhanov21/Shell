@@ -12,17 +12,34 @@ import (
 )
 
 func main() {
+	var multi_string strings.Builder
+	var in_new_line bool
 
 	for {
 		fmt.Print("$ ")
 
-		raw_string, err := bufio.NewReader(os.Stdin).ReadString('\n')
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error reading input", err)
-			os.Exit(1)
+		for {
+			if in_new_line {
+				fmt.Print(". ")
+			}
+
+			raw_string, err := bufio.NewReader(os.Stdin).ReadString('\n')
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Error reading input", err)
+				os.Exit(1)
+			}
+
+			multi_string.WriteString(raw_string)
+			in_new_line = true
+
+			if !strings.HasSuffix(raw_string, "\\\n") {
+				in_new_line = false
+				break
+			}
 		}
 
-		command, args := parse_command(raw_string)
+		command, args := parse_command(multi_string.String())
+		multi_string.Reset()
 
 		switch command {
 
@@ -213,6 +230,13 @@ func parse_command(input string) (string, []string) {
 
 	for _, r := range arguments {
 
+		if preserve_next {
+			if r == '\n' {
+				preserve_next = false
+				continue
+			}
+		}
+
 		switch r {
 
 		case '\\':
@@ -224,6 +248,12 @@ func parse_command(input string) (string, []string) {
 			}
 
 		case '"':
+			if preserve_next {
+				if r == '\n' {
+					preserve_next = false
+					continue
+				}
+			}
 			if preserve_next || inQuote {
 				current.WriteRune(r)
 				preserve_next = false
