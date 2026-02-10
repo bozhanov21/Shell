@@ -314,6 +314,9 @@ func lex_input(arguments string) lexar_output {
 
 		default:
 			current.WriteRune(r)
+			if state.escape_next {
+				state.escape_next = false
+			}
 		}
 
 	}
@@ -327,3 +330,4 @@ func lex_input(arguments string) lexar_output {
 		state:  state,
 	}
 }
+
