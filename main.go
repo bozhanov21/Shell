@@ -167,7 +167,7 @@ func init() {
 				fmt.Fprintln(os.Stderr, "cd:", args[0]+":", "No such file or directory")
 				return
 			}
-			handle_output("ls", nil, "")
+			handle_output("ls", nil, "", 1)
 		},
 	}
 }
@@ -195,19 +195,30 @@ func handle_command(command string, args []string) {
 	var arguments []string
 	var output_file string
 	last_position := len(args) - 1
+	var num int
 
+loop:
 	for i := range args {
-		if args[i] == ">" || args[i] == "1>" {
+		switch args[i] {
 
-			if i == last_position {
-				fmt.Println("parse error near `\\n'")
-				return
-			}
+		case ">", "1>":
+			num = 1
 
-			arguments = args[:i]
-			output_file = args[i+1]
-			break
+		case "2>":
+			num = 2
+
+		default:
+			continue
 		}
+
+		if i >= last_position {
+			fmt.Println("parse error near `\\n'")
+			return
+		}
+
+		arguments = args[:i]
+		output_file = args[i+1]
+		break loop
 	}
 
 	if arguments == nil {
@@ -215,7 +226,7 @@ func handle_command(command string, args []string) {
 	}
 
 	if comand_function, exists := get_method_bound_to_command(command); exists {
-		handle_builtin_output(comand_function, arguments, output_file)
+		handle_builtin_output(comand_function, arguments, output_file, num)
 		return
 	}
 
@@ -225,12 +236,12 @@ func handle_command(command string, args []string) {
 		return
 	}
 
-	handle_output(command, arguments, output_file)
+	handle_output(command, arguments, output_file, num)
 }
 
 var lastExitCode int
 
-func handle_builtin_output(fn func(args ...string), arguments []string, outputFile string) {
+func handle_builtin_output(fn func(args ...string), arguments []string, outputFile string, num int) {
 	if outputFile == "" {
 		fn(arguments...)
 		return
@@ -244,17 +255,31 @@ func handle_builtin_output(fn func(args ...string), arguments []string, outputFi
 	}
 	defer file.Close()
 
-	oldStdOut := os.Stdout
-	os.Stdout = file
+	var oldStdOut *os.File
+	var oldStdErr *os.File
+
+	switch num {
+	case 1:
+		oldStdOut = os.Stdout
+		os.Stdout = file
+	case 2:
+		oldStdErr = os.Stderr
+		os.Stderr = file
+	}
 
 	defer func() {
-		os.Stdout = oldStdOut
+		switch num {
+		case 1:
+			os.Stdout = oldStdOut
+		case 2:
+			os.Stderr = oldStdErr
+		}
 	}()
 
 	fn(arguments...)
 }
 
-func handle_output(command string, args []string, outputFile string) {
+func handle_output(command string, args []string, outputFile string, num int) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cmd := exec.CommandContext(ctx, command, args...)
@@ -273,7 +298,6 @@ func handle_output(command string, args []string, outputFile string) {
 	}()
 
 	cmd.Stdin = os.Stdin
-	cmd.Stderr = os.Stderr
 
 	if outputFile != "" {
 		file, err := os.Create(outputFile)
@@ -282,9 +306,20 @@ func handle_output(command string, args []string, outputFile string) {
 			return
 		}
 		defer file.Close()
-		cmd.Stdout = file
+
+		switch num {
+
+		case 1:
+			cmd.Stdout = file
+			cmd.Stderr = os.Stderr
+		case 2:
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = file
+		}
+
 	} else {
 		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 	}
 
 	err := cmd.Run()
