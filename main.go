@@ -81,9 +81,11 @@ NextPrompt:
 
 		case "":
 			fmt.Println()
+			lastExitCode = 0
 
 		case "type":
 			if len(args) == 0 {
+				lastExitCode = 0
 				fmt.Println()
 				break
 			}
@@ -111,17 +113,19 @@ var known_commands commands
 
 func init() {
 	known_commands = commands{
-		"exit": func(args ...string) { os.Exit(0) },
+		"exit": func(args ...string) { os.Exit(0); lastExitCode = 0 },
 
-		"echo": func(args ...string) { fmt.Println(strings.Join(args, " ")) },
+		"echo": func(args ...string) { fmt.Println(strings.Join(args, " ")); lastExitCode = 0 },
 
 		"type": func(args ...string) { /* returns the type (done separately) */ },
 
 		"pwd": func(args ...string) {
 			if current_dir, err := os.Getwd(); err != nil {
 				fmt.Fprintln(os.Stderr, "pwd:", err)
+				lastExitCode = 1
 			} else {
 				fmt.Println(current_dir)
+				lastExitCode = 0
 			}
 		},
 
@@ -137,6 +141,7 @@ func init() {
 			if strings.HasPrefix(path, "~") {
 				dic, err := os.UserHomeDir()
 				if err != nil {
+					lastExitCode = 1
 					fmt.Fprintln(os.Stderr, "cd:", args[0]+":", "Error finding HOME variable")
 					return
 				}
@@ -145,10 +150,11 @@ func init() {
 
 			err := os.Chdir(path)
 			if err != nil {
+				lastExitCode = 1
 				fmt.Fprintln(os.Stderr, "cd:", args[0]+":", "No such file or directory")
 				return
 			}
-			handle_output("ls")
+			handle_output("ls", nil, "")
 		},
 	}
 }
@@ -173,9 +179,30 @@ func printResolveError(cmd string, err error) {
 }
 
 func handle_command(command string, args []string) {
+	var arguments []string
+	var output_file string
+	last_position := len(args) - 1
+
+	for i := range args {
+		if args[i] == ">" || args[i] == "1>" {
+
+			if i == last_position {
+				fmt.Println("parse error near `\\n'")
+				return
+			}
+
+			arguments = args[:i]
+			output_file = args[i+1]
+			break
+		}
+	}
+
+	if arguments == nil {
+		arguments = args
+	}
+
 	if comand_function, exists := get_method_bound_to_command(command); exists {
-		comand_function(args...)
-		lastExitCode = 0
+		handle_builtin_output(comand_function, arguments, output_file)
 		return
 	}
 
@@ -185,12 +212,36 @@ func handle_command(command string, args []string) {
 		return
 	}
 
-	handle_output(command, args...)
+	handle_output(command, arguments, output_file)
 }
 
 var lastExitCode int
 
-func handle_output(command string, args ...string) {
+func handle_builtin_output(fn func(args ...string), arguments []string, outputFile string) {
+	if outputFile == "" {
+		fn(arguments...)
+		return
+	}
+
+	file, err := os.Create(outputFile)
+	if err != nil {
+		lastExitCode = 1
+		fmt.Fprintln(os.Stderr, "error writing to file")
+		return
+	}
+	defer file.Close()
+
+	oldStdOut := os.Stdout
+	os.Stdout = file
+
+	defer func() {
+		os.Stdout = oldStdOut
+	}()
+
+	fn(arguments...)
+}
+
+func handle_output(command string, args []string, outputFile string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cmd := exec.CommandContext(ctx, command, args...)
@@ -209,8 +260,19 @@ func handle_output(command string, args ...string) {
 	}()
 
 	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
+	if outputFile != "" {
+		file, err := os.Create(outputFile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error writing to file")
+			return
+		}
+		defer file.Close()
+		cmd.Stdout = file
+	} else {
+		cmd.Stdout = os.Stdout
+	}
 
 	err := cmd.Run()
 
@@ -225,16 +287,19 @@ func handle_output(command string, args ...string) {
 
 func handle_type_case(cmd string) {
 	if _, exists := get_method_bound_to_command(cmd); exists {
+		lastExitCode = 0
 		fmt.Println(cmd + " is a shell builtin")
 		return
 	}
 
 	path, err := resolve_command(cmd)
 	if err != nil {
+		lastExitCode = 1
 		fmt.Println(cmd + ": not found")
 		return
 	}
 
+	lastExitCode = 0
 	fmt.Println(cmd + " is " + path)
 }
 
