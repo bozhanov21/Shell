@@ -167,7 +167,7 @@ func init() {
 				fmt.Fprintln(os.Stderr, "cd:", args[0]+":", "No such file or directory")
 				return
 			}
-			handle_output("ls", nil, "", 1)
+			handle_output("ls", nil, "", 1, true)
 		},
 	}
 }
@@ -196,6 +196,7 @@ func handle_command(command string, args []string) {
 	var output_file string
 	last_position := len(args) - 1
 	var num int
+	var shouldAppend bool
 
 loop:
 	for i := range args {
@@ -203,8 +204,18 @@ loop:
 
 		case ">", "1>":
 			num = 1
+			shouldAppend = false
 
 		case "2>":
+			num = 2
+			shouldAppend = false
+
+		case ">>", "1>>":
+			shouldAppend = true
+			num = 1
+
+		case "2>>":
+			shouldAppend = true
 			num = 2
 
 		default:
@@ -226,7 +237,7 @@ loop:
 	}
 
 	if comand_function, exists := get_method_bound_to_command(command); exists {
-		handle_builtin_output(comand_function, arguments, output_file, num)
+		handle_builtin_output(comand_function, arguments, output_file, num, shouldAppend)
 		return
 	}
 
@@ -236,18 +247,26 @@ loop:
 		return
 	}
 
-	handle_output(command, arguments, output_file, num)
+	handle_output(command, arguments, output_file, num, shouldAppend)
 }
 
 var lastExitCode int
 
-func handle_builtin_output(fn func(args ...string), arguments []string, outputFile string, num int) {
+func handle_builtin_output(fn func(args ...string), arguments []string, outputFile string, num int, shouldAppend bool) {
 	if outputFile == "" {
 		fn(arguments...)
 		return
 	}
 
-	file, err := os.Create(outputFile)
+	var file *os.File
+	var err error
+
+	if !shouldAppend {
+		file, err = os.Create(outputFile)
+	} else {
+		file, err = os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	}
+
 	if err != nil {
 		lastExitCode = 1
 		fmt.Fprintln(os.Stderr, "error writing to file")
@@ -279,7 +298,7 @@ func handle_builtin_output(fn func(args ...string), arguments []string, outputFi
 	fn(arguments...)
 }
 
-func handle_output(command string, args []string, outputFile string, num int) {
+func handle_output(command string, args []string, outputFile string, num int, shouldAppend bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cmd := exec.CommandContext(ctx, command, args...)
@@ -299,8 +318,15 @@ func handle_output(command string, args []string, outputFile string, num int) {
 
 	cmd.Stdin = os.Stdin
 
+	var file *os.File
+	var err error
+
 	if outputFile != "" {
-		file, err := os.Create(outputFile)
+		if !shouldAppend {
+			file, err = os.Create(outputFile)
+		} else {
+			file, err = os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "error writing to file")
 			return
@@ -322,7 +348,7 @@ func handle_output(command string, args []string, outputFile string, num int) {
 		cmd.Stderr = os.Stderr
 	}
 
-	err := cmd.Run()
+	err = cmd.Run()
 
 	if err == nil {
 		lastExitCode = 0
