@@ -14,11 +14,77 @@ import (
 	"github.com/chzyer/readline"
 )
 
+type builtinCompleter struct {
+	builtins []string
+}
+
+func (c *builtinCompleter) Do(line []rune, pos int) ([][]rune, int) {
+	input := string(line[:pos])
+	fields := strings.Fields(input)
+
+	if len(fields) == 0 {
+		fmt.Print("\a")
+		return nil, 0
+	}
+
+	current := fields[len(fields)-1]
+
+	if len(fields) > 1 {
+		return nil, 0
+	}
+
+	var candidates [][]rune
+
+	for _, cmd := range c.builtins {
+		if strings.HasPrefix(cmd, current) {
+			suffix := cmd[len(current):] + " "
+			candidates = append(candidates, []rune(suffix))
+		}
+	}
+
+	pathEnv := os.Getenv("PATH")
+	dirs := strings.Split(pathEnv, ":")
+
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+
+		for _, entry := range entries {
+			name := entry.Name()
+
+			if strings.HasPrefix(name, current) {
+				fullPath := dir + "/" + name
+				info, err := os.Stat(fullPath)
+				if err != nil {
+					continue
+				}
+
+				if info.Mode()&0111 != 0 {
+					suffix := name[len(current):] + " "
+					candidates = append(candidates, []rune(suffix))
+				}
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		fmt.Print("\a")
+		return nil, 0
+	}
+
+	return candidates, len(current)
+}
+
 func main() {
-	completer := readline.NewPrefixCompleter(
-		readline.PcItem("echo"),
-		readline.PcItem("exit"),
-	)
+
+	var builtins []string
+	for cmd := range known_commands {
+		builtins = append(builtins, cmd)
+	}
+
+	completer := &builtinCompleter{builtins: builtins}
 
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:       "$ ",
@@ -100,9 +166,9 @@ var known_commands commands
 
 func init() {
 	known_commands = commands{
-		"exit": func(args ...string) { os.Exit(0); lastExitCode = 0 },
-
 		"echo": func(args ...string) { fmt.Println(strings.Join(args, " ")); lastExitCode = 0 },
+
+		"exit": func(args ...string) { os.Exit(0); lastExitCode = 0 },
 
 		"type": func(args ...string) {
 			if len(args) == 0 {
